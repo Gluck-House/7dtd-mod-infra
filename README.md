@@ -93,7 +93,7 @@ The intended rollout flow is:
 2. Tag that repository with a SemVer tag such as `v0.1.0`.
 3. Update the managed template version in this repository if needed.
 4. Push the manifest change to `main` in this repository, or wait for the daily scheduled run.
-5. The workflow clones each selected managed repo, runs `uvx copier update`, pushes a branch, and opens or updates a PR if there is a diff.
+5. The workflow clones each selected managed repo, runs `uvx copier update`, pushes a stable template branch, and opens or updates a PR if there is a diff.
 6. Use a manual workflow run only when you want to target a specific repo or override the template ref.
 
 ### Workflow Triggers
@@ -105,6 +105,8 @@ The [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workfl
 - manually via `workflow_dispatch`
 
 Automatic runs use `all` and `all`, so every enabled template and every enabled repo in the manifest is evaluated.
+
+Each managed repo uses one rolling update branch per template. If a PR is already open for a given repo and template, later runs force-push fresh changes to that same branch and update the existing PR instead of opening a new one.
 
 ### Workflow Inputs
 

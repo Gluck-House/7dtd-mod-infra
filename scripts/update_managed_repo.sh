@@ -16,8 +16,7 @@ token="${MANAGED_REPOS_TOKEN:?MANAGED_REPOS_TOKEN is required}"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
-safe_ref="$(printf '%s' "$template_ref" | tr '/:@ ' '----')"
-update_branch="chore/template-update-${template_id}-${safe_ref}"
+update_branch="chore/template-update-${template_id}"
 commit_message="chore(template): update from ${template_id} ${template_ref}"
 pr_title="$commit_message"
 pr_body=$(
