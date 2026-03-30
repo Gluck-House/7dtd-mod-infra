@@ -17,6 +17,8 @@ trap 'rm -rf "$work_dir"' EXIT
 
 update_branch="chore/7dtd-build-update"
 version_file=".github/7dtd-version.env"
+scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+pr_script="$scripts_dir/manage_repo_pull_request.py"
 export GH_TOKEN="$token"
 
 git clone "https://x-access-token:${token}@github.com/${repo}.git" "$work_dir/repo" >/dev/null 2>&1
@@ -47,20 +49,11 @@ if [ "$repo_app_id" != "$target_app_id" ]; then
 fi
 
 close_stale_pr() {
-    local existing_pr_number
-    existing_pr_number="$(
-        gh pr list \
-            --repo "$repo" \
-            --state open \
-            --head "$update_branch" \
-            --json number \
-            --jq '.[0].number // ""'
-    )"
-
-    if [ -n "$existing_pr_number" ]; then
-        gh pr comment "$existing_pr_number" --repo "$repo" --body "Pinned 7 Days to Die build is already current. Closing automated update PR." >/dev/null
-        gh pr close "$existing_pr_number" --repo "$repo" >/dev/null
-    fi
+    uv run python "$pr_script" close-if-exists \
+        --repo "$repo" \
+        --base-branch "$base_branch" \
+        --head-branch "$update_branch" \
+        --comment "Pinned 7 Days to Die build is already current. Closing automated update PR." >/dev/null
 
     if git -C "$work_dir/repo" ls-remote --exit-code --heads origin "$update_branch" >/dev/null 2>&1; then
         git -C "$work_dir/repo" push origin ":refs/heads/${update_branch}" >/dev/null
@@ -118,36 +111,12 @@ git -C "$work_dir/repo" checkout -B "$update_branch" >/dev/null 2>&1
 git -C "$work_dir/repo" commit -m "$commit_message" >/dev/null
 git -C "$work_dir/repo" push --force-with-lease origin "$update_branch" >/dev/null
 
-existing_pr_number="$(
-    gh pr list \
-        --repo "$repo" \
-        --state open \
-        --head "$update_branch" \
-        --json number \
-        --jq '.[0].number // ""'
-)"
-
-if [ -n "$existing_pr_number" ]; then
-    gh pr edit "$existing_pr_number" --repo "$repo" --title "$pr_title" --body "$pr_body" >/dev/null
-    gh pr edit "$existing_pr_number" --repo "$repo" --add-label chore --add-label dependencies >/dev/null 2>&1 || true
-else
-    gh pr create \
-        --repo "$repo" \
-        --base "$base_branch" \
-        --head "$update_branch" \
-        --title "$pr_title" \
-        --body "$pr_body" >/dev/null
-    created_pr_number="$(
-        gh pr list \
-            --repo "$repo" \
-            --state open \
-            --head "$update_branch" \
-            --json number \
-            --jq '.[0].number // ""'
-    )"
-    if [ -n "$created_pr_number" ]; then
-        gh pr edit "$created_pr_number" --repo "$repo" --add-label chore --add-label dependencies >/dev/null 2>&1 || true
-    fi
-fi
+uv run python "$pr_script" upsert \
+    --repo "$repo" \
+    --base-branch "$base_branch" \
+    --head-branch "$update_branch" \
+    --title "$pr_title" \
+    --body "$pr_body" \
+    --labels chore dependencies >/dev/null
 
 echo "Created or updated 7DTD build PR for ${repo}"
