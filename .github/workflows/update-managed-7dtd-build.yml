@@ -1,0 +1,142 @@
+name: update-managed-7dtd-build
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Target repo in owner/name form, or all
+        required: true
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-managed-7dtd-build
+  cancel-in-progress: false
+
+env:
+  TARGET_REPO: ${{ github.event.inputs.repo || 'all' }}
+  GAME_APP_ID: "294420"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      repo_count: ${{ steps.plan.outputs.repo_count }}
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build target matrix
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --with pyyaml python scripts/render_managed_repo_matrix.py \
+            config/managed-templates.yml \
+            "${{ env.TARGET_REPO }}"
+
+  resolve-latest:
+    runs-on:
+      - actions-runner-scale-set
+    outputs:
+      app_id: ${{ steps.resolve.outputs.app_id }}
+      latest_build_id: ${{ steps.resolve.outputs.latest_build_id }}
+    env:
+      APP_ID: ${{ env.GAME_APP_ID }}
+      STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v6
+
+      - name: Resolve latest public 7DTD build
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          STEAMCMD_MODE=docker \
+          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
+          TOOLS_DIR="${{ github.workspace }}/.cache/tools" \
+          ./scripts/resolve_latest_7dtd_build.sh
+
+      - name: Publish dependency bundle for latest build
+        env:
+          DEPS_S3_ACCESS_KEY_ID: ${{ secrets['7DTD_S3_ACCESS_KEY_ID'] }}
+          DEPS_S3_SECRET_ACCESS_KEY: ${{ secrets['7DTD_S3_SECRET_ACCESS_KEY'] }}
+          DEPS_S3_BUCKET: ${{ vars['7DTD_S3_BUCKET'] }}
+          DEPS_S3_ENDPOINT: ${{ vars['7DTD_S3_ENDPOINT'] }}
+          DEPS_S3_FORCE_PATH_STYLE: ${{ vars['7DTD_S3_FORCE_PATH_STYLE'] || 'true' }}
+          DEPS_S3_REGION: ${{ vars['7DTD_S3_REGION'] || 'eu-west-2' }}
+          APP_ID: ${{ steps.resolve.outputs.app_id }}
+          LATEST_BUILD_ID: ${{ steps.resolve.outputs.latest_build_id }}
+          STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if uv run --with boto3 python ./scripts/manage_7dtd_deps_bundle.py exists \
+            --app-id "${APP_ID}" \
+            --build-id "${LATEST_BUILD_ID}"; then
+            echo "Dependency bundle already exists for latest build."
+            exit 0
+          fi
+
+          APP_ID="${APP_ID}" \
+          DEPS_DIR="${{ github.workspace }}/deps" \
+          SERVER_DIR="${{ github.workspace }}/.cache/7dtd-dedicated-server" \
+          STEAMCMD_MODE=docker \
+          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
+          TOOLS_DIR="${{ github.workspace }}/.cache/tools" \
+          ./scripts/download_7dtd_server.sh
+
+          cat > deps/.7dtd-version <<EOF
+          APP_ID=${APP_ID}
+          BUILD_ID=${LATEST_BUILD_ID}
+          EOF
+
+          uv run --with boto3 python ./scripts/manage_7dtd_deps_bundle.py upload \
+            --app-id "${APP_ID}" \
+            --build-id "${LATEST_BUILD_ID}" \
+            --deps-dir "${{ github.workspace }}/deps"
+
+  update:
+    needs:
+      - plan
+      - resolve-latest
+    if: needs.plan.outputs.repo_count != '0'
+    runs-on:
+      - actions-runner-scale-set
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
+    env:
+      MANAGED_REPOS_TOKEN: ${{ secrets.MANAGED_REPOS_TOKEN }}
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v6
+
+      - name: Update managed repo 7DTD build pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/update_managed_7dtd_repo.sh \
+            "${{ matrix.repo }}" \
+            "${{ matrix.branch }}" \
+            "${{ needs.resolve-latest.outputs.app_id }}" \
+            "${{ needs.resolve-latest.outputs.latest_build_id }}"

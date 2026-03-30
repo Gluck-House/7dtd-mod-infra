@@ -14,7 +14,8 @@ Typical responsibilities for this repository include:
 
 - reusable build workflows invoked with `workflow_call`
 - shared composite actions for downloading pinned 7DTD dependencies
-- shared automation for checking whether a pinned 7DTD build is stale
+- shared automation for checking whether a pinned 7DTD build is stale and opening update PRs
+- central publishing of immutable 7DTD dependency bundles
 - standard packaging and artifact upload steps
 - release and publishing workflow building blocks
 
@@ -55,7 +56,7 @@ In particular, mod repositories should continue to own:
 - their solution and project files
 - their resource and packaging layout
 - their repo-local `.github/7dtd-version.env` pin
-- their top-level wrapper workflows that call into this repository
+- their top-level build wrapper workflow that calls into this repository
 
 The Copier template repository is responsible for defining the default repository shape. This infrastructure repository is responsible for the shared automation those generated repositories consume.
 
@@ -128,6 +129,21 @@ Create a secret named `MANAGED_REPOS_TOKEN` in this repository with access to th
 
 The workflow does not use the default `GITHUB_TOKEN` for cross-repo pushes because that token is normally scoped to the current repository only.
 
+### Shared Dependency Bundle Access
+
+Downstream build workflows now fetch pinned 7DTD dependency bundles from shared S3 storage.
+
+Because reusable workflows execute in the caller repository context, the consuming mod repositories need access to the S3 credentials and bucket settings used for bundle download.
+
+Provide these in the consuming repositories, or as organization-level secrets and variables:
+
+- secret: `7DTD_S3_ACCESS_KEY_ID`
+- secret: `7DTD_S3_SECRET_ACCESS_KEY`
+- variable: `7DTD_S3_BUCKET`
+- variable: `7DTD_S3_ENDPOINT`
+- variable: `7DTD_S3_FORCE_PATH_STYLE`
+- variable: `7DTD_S3_REGION`
+
 ## Template Versioning
 
 For the template repository itself, the lowest-friction versioning model is to use git tags as the source of truth.
@@ -152,15 +168,17 @@ At this stage, a separate `VERSION` file in the template repository is not neces
 
 ## Reusable Workflows
 
-This repository now owns the first reusable workflows that downstream mod repositories can call directly:
+This repository now owns the shared workflows that downstream mod repositories consume directly, plus the central workflow that manages 7DTD pin updates across repos:
 
-- [reusable-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-build.yml): restores pinned game dependencies, runs the repo-local build entry point, and stages the packaged artifact
-- [reusable-update-7dtd-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-update-7dtd-build.yml): checks the pinned 7DTD build id, updates `.github/7dtd-version.env`, and opens or refreshes the rolling PR
+- [reusable-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-build.yml): downloads the exact pinned dependency bundle from shared S3 storage, runs the repo-local build entry point, and stages the packaged artifact
+- [update-managed-7dtd-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-7dtd-build.yml): runs the normal daily cross-repo pinned-build update loop from infra
 
 The current split is intentional:
 
-- downstream repos still own `build.sh`, `scripts/check_7dtd_build.sh`, `scripts/download_7dtd_server.sh`, and `.github/7dtd-version.env`
-- this repository owns the GitHub Actions orchestration around those repo-local entry points
+- downstream repos still own `build.sh`, their source tree, and `.github/7dtd-version.env`
+- downstream repos may keep a local `scripts/download_7dtd_server.sh` helper for developer builds, but they no longer need repo-local update workflows or repo-local build-check scripts
+- this repository owns the daily Steam query, dependency bundle publication, and PR orchestration for pinned build updates
+- shared dependency bundles are stored immutably in S3 by `APP_ID` and `BUILD_ID`, so different repos can stay pinned to different game builds safely
 
 ## Status
 
