@@ -187,6 +187,6 @@ This repository now contains:
 - a template-first manifest in [managed-templates.yml](/home/luke/repos/7dtd-mod-infra/config/managed-templates.yml)
 - helper scripts for resolving update targets and applying Copier updates
 - an automated workflow for raising update PRs into managed repositories
-- reusable workflows for shared mod build and 7DTD pin update automation
+- reusable workflows for shared mod build and centralized 7DTD pin update automation
 
 The next step is to keep extracting shared workflow logic from downstream repos into these reusable workflows, then use Copier rollouts to apply the wrapper changes consistently.
