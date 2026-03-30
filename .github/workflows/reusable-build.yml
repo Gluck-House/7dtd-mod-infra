@@ -1,0 +1,206 @@
+name: reusable-build
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        required: true
+        type: string
+      artifact_folder:
+        required: true
+        type: string
+      build_script:
+        required: false
+        type: string
+        default: ./build.sh
+      version_file:
+        required: false
+        type: string
+        default: .github/7dtd-version.env
+      download_script:
+        required: false
+        type: string
+        default: ./scripts/download_7dtd_server.sh
+      dotnet_version:
+        required: false
+        type: string
+        default: 8.0.x
+      runner_label:
+        required: false
+        type: string
+        default: actions-runner-scale-set
+      steamcmd_docker_image:
+        required: false
+        type: string
+        default: debian:bookworm-slim
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reusable-build-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner_label }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.GHA_CACHE_BUCKET_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.GHA_CACHE_BUCKET_KEY_SECRET }}
+      RUNS_ON_S3_BUCKET_CACHE: ${{ vars.GHA_CACHE_BUCKET_NAME }}
+      RUNS_ON_S3_BUCKET_ENDPOINT: ${{ vars.GHA_CACHE_ENDPOINT }}
+      RUNS_ON_S3_FORCE_PATH_STYLE: "true"
+      RUNS_ON_RUNNER_NAME: ""
+      AWS_REGION: eu-west-2
+      AWS_DEFAULT_REGION: eu-west-2
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+      STEAMCMD_DOCKER_IMAGE: ${{ inputs.steamcmd_docker_image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Add local .NET install to PATH
+        shell: bash
+        run: echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
+
+      - name: Load pinned 7DTD version
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "${{ inputs.version_file }}"
+          echo "APP_ID=${APP_ID}" >> "$GITHUB_ENV"
+          echo "GAME_BRANCH=${BRANCH}" >> "$GITHUB_ENV"
+          echo "GAME_BUILD_ID=${BUILD_ID}" >> "$GITHUB_ENV"
+
+      - name: Cache 7 Days to Die build dependencies
+        id: cache-deps
+        uses: runs-on/cache@v4
+        with:
+          path: deps/
+          key: 7dtd-deps-v2|${{ runner.os }}|${{ hashFiles(inputs.version_file, inputs.download_script) }}
+          restore-keys: |
+            7dtd-deps-v2|${{ runner.os }}
+
+      - name: Cache SteamCMD container image
+        uses: runs-on/cache@v4
+        with:
+          path: .cache/docker/steamcmd-image.tar
+          key: steamcmd-image-v3|${{ runner.os }}|${{ inputs.steamcmd_docker_image }}
+          restore-keys: |
+            steamcmd-image-v3|${{ runner.os }}
+
+      - name: Cache SteamCMD state
+        uses: runs-on/cache@v4
+        with:
+          path: .cache/steamcmd/
+          key: steamcmd-state-v1|${{ runner.os }}
+          restore-keys: |
+            steamcmd-state-v1|${{ runner.os }}
+
+      - name: Load or pull SteamCMD container image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cache_path=".cache/docker/steamcmd-image.tar"
+          mkdir -p "$(dirname "$cache_path")"
+
+          if [ -f "$cache_path" ]; then
+            docker load -i "$cache_path"
+          else
+            docker pull "${STEAMCMD_DOCKER_IMAGE}"
+            docker save "${STEAMCMD_DOCKER_IMAGE}" -o "$cache_path"
+          fi
+
+      - name: Verify cached dependency metadata
+        id: verify_deps
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            deps/0Harmony.dll
+            deps/Assembly-CSharp.dll
+            deps/LogLibrary.dll
+            deps/UnityEngine.dll
+            deps/UnityEngine.CoreModule.dll
+            deps/.7dtd-version
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Missing cached dependency artifact: $file"
+              exit 1
+            fi
+          done
+
+          source deps/.7dtd-version
+
+          test "${APP_ID}" = "${{ env.APP_ID }}"
+          test "${BRANCH}" = "${{ env.GAME_BRANCH }}"
+          test "${BUILD_ID}" = "${{ env.GAME_BUILD_ID }}"
+        continue-on-error: true
+
+      - name: Download dedicated server assemblies
+        if: steps.cache-deps.outputs.cache-hit != 'true' || steps.verify_deps.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STEAMCMD_MODE=docker \
+          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
+          APP_ID="${APP_ID}" \
+          BRANCH="${GAME_BRANCH}" \
+          "${{ inputs.download_script }}"
+
+          manifest_path=".cache/7dtd-dedicated-server/steamapps/appmanifest_${APP_ID}.acf"
+          if [ ! -f "$manifest_path" ]; then
+            echo "Steam app manifest not found: $manifest_path" >&2
+            exit 1
+          fi
+
+          actual_build_id="$(grep -E '"buildid"' "$manifest_path" | head -n1 | sed -E 's/.*"buildid"[[:space:]]+"([0-9]+)".*/\1/')"
+          if [ -z "$actual_build_id" ]; then
+            echo "Could not determine buildid from $manifest_path" >&2
+            exit 1
+          fi
+
+          if [ "$actual_build_id" != "$GAME_BUILD_ID" ]; then
+            echo "Pinned build mismatch: expected $GAME_BUILD_ID, got $actual_build_id" >&2
+            exit 1
+          fi
+
+          cat > deps/.7dtd-version <<EOF
+          APP_ID=${APP_ID}
+          BRANCH=${GAME_BRANCH}
+          BUILD_ID=${GAME_BUILD_ID}
+          EOF
+
+      - name: Build mod
+        shell: bash
+        run: ${{ inputs.build_script }}
+
+      - name: Stage artifact contents
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact_root="${{ inputs.project_name }}/build/artifact"
+          rm -rf "$artifact_root"
+          mkdir -p "$artifact_root/${{ inputs.artifact_folder }}"
+          cp -R "${{ inputs.project_name }}/build/${{ inputs.project_name }}/." "$artifact_root/${{ inputs.artifact_folder }}/"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}-${{ github.sha }}
+          path: ${{ inputs.project_name }}/build/artifact/
+          if-no-files-found: error

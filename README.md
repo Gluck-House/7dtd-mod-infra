@@ -150,12 +150,25 @@ At this stage, a separate `VERSION` file in the template repository is not neces
 - Prefer reusable workflows and composite actions over copied workflow YAML.
 - Avoid committing game DLLs unless redistribution has been explicitly cleared.
 
+## Reusable Workflows
+
+This repository now owns the first reusable workflows that downstream mod repositories can call directly:
+
+- [reusable-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-build.yml): restores pinned game dependencies, runs the repo-local build entry point, and stages the packaged artifact
+- [reusable-update-7dtd-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-update-7dtd-build.yml): checks the pinned 7DTD build id, updates `.github/7dtd-version.env`, and opens or refreshes the rolling PR
+
+The current split is intentional:
+
+- downstream repos still own `build.sh`, `scripts/check_7dtd_build.sh`, `scripts/download_7dtd_server.sh`, and `.github/7dtd-version.env`
+- this repository owns the GitHub Actions orchestration around those repo-local entry points
+
 ## Status
 
-This repository now contains the first managed-template update scaffold:
+This repository now contains:
 
 - a template-first manifest in [managed-templates.yml](/home/luke/repos/7dtd-mod-infra/config/managed-templates.yml)
 - helper scripts for resolving update targets and applying Copier updates
-- a manual workflow for raising update PRs into managed repositories
+- an automated workflow for raising update PRs into managed repositories
+- reusable workflows for shared mod build and 7DTD pin update automation
 
-The next step is to create the `v0.1.0` tag in `7dtd-mod-template`, configure `MANAGED_REPOS_TOKEN`, and run the workflow against `Gluck-House/7dtd-timeloop`.
+The next step is to keep extracting shared workflow logic from downstream repos into these reusable workflows, then use Copier rollouts to apply the wrapper changes consistently.

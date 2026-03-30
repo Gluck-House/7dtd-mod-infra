@@ -1,0 +1,278 @@
+name: reusable-update-7dtd-build
+
+on:
+  workflow_call:
+    inputs:
+      default_branch:
+        required: false
+        type: string
+        default: main
+      version_file:
+        required: false
+        type: string
+        default: .github/7dtd-version.env
+      check_script:
+        required: false
+        type: string
+        default: ./scripts/check_7dtd_build.sh
+      update_branch:
+        required: false
+        type: string
+        default: chore/7dtd-build-update
+      runner_label:
+        required: false
+        type: string
+        default: actions-runner-scale-set
+      steamcmd_docker_image:
+        required: false
+        type: string
+        default: debian:bookworm-slim
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: reusable-update-7dtd-build-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-7dtd-build:
+    runs-on: ${{ inputs.runner_label }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.GHA_CACHE_BUCKET_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.GHA_CACHE_BUCKET_KEY_SECRET }}
+      RUNS_ON_S3_BUCKET_CACHE: ${{ vars.GHA_CACHE_BUCKET_NAME }}
+      RUNS_ON_S3_BUCKET_ENDPOINT: ${{ vars.GHA_CACHE_ENDPOINT }}
+      RUNS_ON_S3_FORCE_PATH_STYLE: "true"
+      RUNS_ON_RUNNER_NAME: ""
+      AWS_REGION: eu-west-2
+      AWS_DEFAULT_REGION: eu-west-2
+      STEAMCMD_DOCKER_IMAGE: ${{ inputs.steamcmd_docker_image }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache SteamCMD container image
+        uses: runs-on/cache@v4
+        with:
+          path: .cache/docker/steamcmd-image.tar
+          key: steamcmd-image-v3|${{ runner.os }}|${{ inputs.steamcmd_docker_image }}
+          restore-keys: |
+            steamcmd-image-v3|${{ runner.os }}
+
+      - name: Cache SteamCMD state
+        uses: runs-on/cache@v4
+        with:
+          path: .cache/steamcmd/
+          key: steamcmd-state-v1|${{ runner.os }}
+          restore-keys: |
+            steamcmd-state-v1|${{ runner.os }}
+
+      - name: Load or pull SteamCMD container image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cache_path=".cache/docker/steamcmd-image.tar"
+          mkdir -p "$(dirname "$cache_path")"
+
+          if [ -f "$cache_path" ]; then
+            docker load -i "$cache_path"
+          else
+            docker pull "${STEAMCMD_DOCKER_IMAGE}"
+            docker save "${STEAMCMD_DOCKER_IMAGE}" -o "$cache_path"
+          fi
+
+      - name: Check pinned 7DTD build id
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          set +e
+          STEAMCMD_MODE=docker \
+          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
+          "${{ inputs.check_script }}"
+          status=$?
+          set -e
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+          if [ "$status" -gt 1 ]; then
+            exit "$status"
+          fi
+
+      - name: Update pinned build id
+        if: steps.check.outputs.outdated == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tmpfile="$(mktemp)"
+          awk -v build_id="${{ steps.check.outputs.latest_build_id }}" '
+            BEGIN {
+              updated = 0
+            }
+            /^BUILD_ID=/ {
+              print "BUILD_ID=" build_id
+              updated = 1
+              next
+            }
+            {
+              print
+            }
+            END {
+              if (!updated) {
+                exit 1
+              }
+            }
+          ' "${{ inputs.version_file }}" > "$tmpfile"
+          mv "$tmpfile" "${{ inputs.version_file }}"
+
+      - name: Verify updated version file
+        if: steps.check.outputs.outdated == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "${{ inputs.version_file }}"
+          test "${BUILD_ID}" = "${{ steps.check.outputs.latest_build_id }}"
+
+      - name: Configure git author
+        if: github.ref == format('refs/heads/{0}', inputs.default_branch) && steps.check.outputs.outdated == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push build update branch
+        if: github.ref == format('refs/heads/{0}', inputs.default_branch) && steps.check.outputs.outdated == 'true'
+        id: push-update
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branch="${{ inputs.update_branch }}"
+
+          git add "${{ inputs.version_file }}"
+          if git diff --cached --quiet -- "${{ inputs.version_file }}"; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "chore(7dtd): bump pinned build id to ${{ steps.check.outputs.latest_build_id }}"
+          git push --force origin HEAD:"refs/heads/${branch}"
+
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR with build update
+        if: github.ref == format('refs/heads/{0}', inputs.default_branch) && steps.check.outputs.outdated == 'true' && steps.push-update.outputs.pushed == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = `${owner}:${process.env.UPDATE_BRANCH}`;
+            const base = process.env.DEFAULT_BRANCH;
+            const title = `chore(7dtd): bump pinned build id to ${process.env.LATEST_BUILD_ID}`;
+            const body = [
+              'Automated update of the pinned 7 Days to Die build metadata.',
+              '',
+              `- App ID: \`${process.env.APP_ID}\``,
+              `- Branch: \`${process.env.BRANCH_NAME}\``,
+              `- Previous build ID: \`${process.env.PINNED_BUILD_ID}\``,
+              `- Latest build ID: \`${process.env.LATEST_BUILD_ID}\``,
+              '',
+              'This change was generated by `7dtd-mod-infra` reusable workflow `reusable-update-7dtd-build.yml`.',
+            ].join('\n');
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              head,
+              base,
+              per_page: 50,
+            });
+
+            if (prs.length > 0) {
+              const pr = prs[0];
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pr.number,
+                title,
+                body,
+              });
+              await github.rest.issues.setLabels({
+                owner,
+                repo,
+                issue_number: pr.number,
+                labels: ['chore', 'dependencies'],
+              });
+              return;
+            }
+
+            const pr = await github.rest.pulls.create({
+              owner,
+              repo,
+              title,
+              head: process.env.UPDATE_BRANCH,
+              base,
+              body,
+              maintainer_can_modify: true,
+            });
+
+            await github.rest.issues.setLabels({
+              owner,
+              repo,
+              issue_number: pr.data.number,
+              labels: ['chore', 'dependencies'],
+            });
+        env:
+          UPDATE_BRANCH: ${{ steps.push-update.outputs.branch }}
+          DEFAULT_BRANCH: ${{ inputs.default_branch }}
+          APP_ID: ${{ steps.check.outputs.app_id }}
+          BRANCH_NAME: ${{ steps.check.outputs.branch_name }}
+          PINNED_BUILD_ID: ${{ steps.check.outputs.pinned_build_id }}
+          LATEST_BUILD_ID: ${{ steps.check.outputs.latest_build_id }}
+
+      - name: Close stale build update PR (no changes)
+        if: github.ref == format('refs/heads/{0}', inputs.default_branch) && steps.check.outputs.outdated != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = `${owner}:${process.env.UPDATE_BRANCH}`;
+            const base = process.env.DEFAULT_BRANCH;
+            const prs = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', head, base, per_page: 50 });
+            if (prs.length > 0) {
+              const pr = prs[0];
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: 'Pinned 7 Days to Die build is already current. Closing automated update PR.' });
+              await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
+            }
+
+      - name: Delete stale branch (no changes)
+        if: github.ref == format('refs/heads/{0}', inputs.default_branch) && steps.check.outputs.outdated != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = `heads/${process.env.UPDATE_BRANCH}`;
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref });
+            } catch (error) {
+              if (error.status !== 422 && error.status !== 404) {
+                throw error;
+              }
+            }
+        env:
+          UPDATE_BRANCH: ${{ inputs.update_branch }}
