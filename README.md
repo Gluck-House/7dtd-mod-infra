@@ -171,6 +171,7 @@ At this stage, a separate `VERSION` file in the template repository is not neces
 This repository now owns the shared workflows that downstream mod repositories consume directly, plus the central workflow that manages 7DTD pin updates across repos:
 
 - [reusable-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-build.yml): downloads the exact pinned dependency bundle from shared S3 storage, runs the repo-local build entry point, and stages the packaged artifact
+- [reusable-release.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/reusable-release.yml): builds the mod from the pinned shared dependency bundle and uploads a zip asset into the GitHub release that triggered the run
 - [update-managed-7dtd-build.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-7dtd-build.yml): runs the normal daily cross-repo pinned-build update loop from infra
 
 The current split is intentional:

@@ -1,0 +1,165 @@
+name: reusable-release
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        required: true
+        type: string
+      artifact_folder:
+        required: true
+        type: string
+      build_script:
+        required: false
+        type: string
+        default: ./build.sh
+      version_file:
+        required: false
+        type: string
+        default: .github/7dtd-version.env
+      dotnet_version:
+        required: false
+        type: string
+        default: 8.0.x
+      runner_label:
+        required: false
+        type: string
+        default: actions-runner-scale-set
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reusable-release-${{ github.repository }}-${{ github.event.release.id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ${{ inputs.runner_label }}
+    env:
+      DEPS_S3_ACCESS_KEY_ID: ${{ secrets['_7DTD_S3_ACCESS_KEY_ID'] }}
+      DEPS_S3_SECRET_ACCESS_KEY: ${{ secrets['_7DTD_S3_SECRET_ACCESS_KEY'] }}
+      DEPS_S3_BUCKET: ${{ vars['_7DTD_S3_BUCKET'] }}
+      DEPS_S3_ENDPOINT: ${{ vars['_7DTD_S3_ENDPOINT'] }}
+      DEPS_S3_FORCE_PATH_STYLE: ${{ vars['_7DTD_S3_FORCE_PATH_STYLE'] || 'true' }}
+      DEPS_S3_REGION: ${{ vars['_7DTD_S3_REGION'] || 'eu-west-2' }}
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Add local .NET install to PATH
+        shell: bash
+        run: echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
+
+      - name: Load pinned 7DTD version
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "${{ inputs.version_file }}"
+          echo "APP_ID=${APP_ID}" >> "$GITHUB_ENV"
+          echo "GAME_BUILD_ID=${BUILD_ID}" >> "$GITHUB_ENV"
+
+      - name: Download pinned dependency bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          uv run --with boto3 python - <<'PY'
+          import os
+          import shutil
+          import tarfile
+          import tempfile
+          from pathlib import Path
+
+          import boto3
+          from botocore.config import Config
+
+          access_key = os.environ["DEPS_S3_ACCESS_KEY_ID"]
+          secret_key = os.environ["DEPS_S3_SECRET_ACCESS_KEY"]
+          bucket = os.environ["DEPS_S3_BUCKET"]
+          endpoint = os.environ.get("DEPS_S3_ENDPOINT") or None
+          region = os.environ.get("DEPS_S3_REGION", "eu-west-2")
+          force_path_style = os.environ.get("DEPS_S3_FORCE_PATH_STYLE", "true").lower() == "true"
+
+          app_id = os.environ["APP_ID"]
+          build_id = os.environ["GAME_BUILD_ID"]
+
+          deps_dir = Path("deps")
+          shutil.rmtree(deps_dir, ignore_errors=True)
+          deps_dir.mkdir(parents=True, exist_ok=True)
+
+          key = f"7dtd-deps/app-{app_id}/build-{build_id}/deps.tar.gz"
+
+          client = boto3.client(
+              "s3",
+              aws_access_key_id=access_key,
+              aws_secret_access_key=secret_key,
+              endpoint_url=endpoint,
+              region_name=region,
+              config=Config(s3={"addressing_style": "path" if force_path_style else "auto"}),
+          )
+
+          with tempfile.TemporaryDirectory() as tmp_dir:
+              archive_path = Path(tmp_dir) / "deps.tar.gz"
+              client.download_file(bucket, key, str(archive_path))
+              with tarfile.open(archive_path, "r:gz") as tar:
+                  tar.extractall(deps_dir)
+          PY
+
+      - name: Verify dependency metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          source deps/.7dtd-version
+
+          test "${APP_ID}" = "${{ env.APP_ID }}"
+          test "${BUILD_ID}" = "${{ env.GAME_BUILD_ID }}"
+
+      - name: Build mod
+        shell: bash
+        run: ${{ inputs.build_script }}
+
+      - name: Stage release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_root="${{ inputs.project_name }}/build/release"
+          rm -rf "$release_root"
+          mkdir -p "$release_root/${{ inputs.artifact_folder }}"
+          cp -R "${{ inputs.project_name }}/build/${{ inputs.project_name }}/." "$release_root/${{ inputs.artifact_folder }}/"
+
+      - name: Archive release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_name="${{ github.event.release.tag_name }}"
+          asset_name="${{ inputs.artifact_folder }}-${tag_name}.zip"
+          asset_path="${{ github.workspace }}/${asset_name}"
+          release_root="${{ inputs.project_name }}/build/release"
+
+          rm -f "$asset_path"
+          (
+            cd "$release_root"
+            zip -r "$asset_path" "${{ inputs.artifact_folder }}"
+          )
+
+          echo "RELEASE_ASSET_PATH=$asset_path" >> "$GITHUB_ENV"
+          echo "RELEASE_ASSET_NAME=$asset_name" >> "$GITHUB_ENV"
+
+      - name: Upload asset to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_ASSET_PATH }}
