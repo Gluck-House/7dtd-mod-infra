@@ -19,7 +19,6 @@ concurrency:
 
 env:
   TARGET_REPO: ${{ github.event.inputs.repo || 'all' }}
-  GAME_APP_ID: "294420"
 
 jobs:
   plan:
@@ -50,7 +49,7 @@ jobs:
       app_id: ${{ steps.resolve.outputs.app_id }}
       latest_build_id: ${{ steps.resolve.outputs.latest_build_id }}
     env:
-      APP_ID: ${{ env.GAME_APP_ID }}
+      APP_ID: "294420"
       STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
     steps:
       - name: Checkout infra repository
