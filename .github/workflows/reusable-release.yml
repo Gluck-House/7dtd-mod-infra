@@ -151,13 +151,28 @@ jobs:
           release_root="${{ inputs.project_name }}/build/release"
 
           rm -f "$asset_path"
-          (
-            cd "$release_root"
-            zip -r "$asset_path" "${{ inputs.artifact_folder }}"
-          )
+
+          uv run python - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+
+          release_root = Path(os.environ["RELEASE_ROOT"])
+          asset_path = Path(os.environ["ASSET_PATH"])
+          artifact_folder = os.environ["ARTIFACT_FOLDER"]
+          source_root = release_root / artifact_folder
+
+          with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for path in source_root.rglob("*"):
+                  archive.write(path, path.relative_to(release_root))
+          PY
 
           echo "RELEASE_ASSET_PATH=$asset_path" >> "$GITHUB_ENV"
           echo "RELEASE_ASSET_NAME=$asset_name" >> "$GITHUB_ENV"
+        env:
+          RELEASE_ROOT: ${{ github.workspace }}/${{ inputs.project_name }}/build/release
+          ASSET_PATH: ${{ github.workspace }}/${{ inputs.artifact_folder }}-${{ github.event.release.tag_name }}.zip
+          ARTIFACT_FOLDER: ${{ inputs.artifact_folder }}
 
       - name: Upload asset to release
         uses: softprops/action-gh-release@v2
