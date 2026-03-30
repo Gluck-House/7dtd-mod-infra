@@ -199,7 +199,7 @@ jobs:
           cp -R "${{ inputs.project_name }}/build/${{ inputs.project_name }}/." "$artifact_root/${{ inputs.artifact_folder }}/"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.project_name }}-${{ github.sha }}
           path: ${{ inputs.project_name }}/build/artifact/
