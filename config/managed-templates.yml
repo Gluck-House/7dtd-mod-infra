@@ -3,6 +3,6 @@ templates:
     src: https://github.com/Gluck-House/7dtd-mod-template
     version: 0.1.0
     repos:
-      - repo: Gluck-House/7dtdTimeLoop
+      - repo: Gluck-House/7dtd-timeloop
         branch: main
         enabled: true

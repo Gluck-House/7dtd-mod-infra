@@ -82,7 +82,7 @@ templates:
     src: https://github.com/Gluck-House/7dtd-mod-template
     version: 0.1.0
     repos:
-      - repo: Gluck-House/7dtdTimeLoop
+      - repo: Gluck-House/7dtd-timeloop
         branch: main
         enabled: true
 ```
@@ -158,4 +158,4 @@ This repository now contains the first managed-template update scaffold:
 - helper scripts for resolving update targets and applying Copier updates
 - a manual workflow for raising update PRs into managed repositories
 
-The next step is to create the `v0.1.0` tag in `7dtd-mod-template`, configure `MANAGED_REPOS_TOKEN`, and run the workflow against `Gluck-House/7dtdTimeLoop`.
+The next step is to create the `v0.1.0` tag in `7dtd-mod-template`, configure `MANAGED_REPOS_TOKEN`, and run the workflow against `Gluck-House/7dtd-timeloop`.
