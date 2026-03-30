@@ -1,2 +1,146 @@
-# 7dtd-mod-infra
-Gluck House 7 Days To Die Mods Shared Infra
+# 7DTD Mod Infra
+
+This repository contains the shared build and automation infrastructure for Gluck House 7 Days to Die mod repositories.
+
+Its job is to hold reusable GitHub Actions workflows, composite actions, and related CI helpers that can be consumed by multiple standalone mod repositories.
+
+## Purpose
+
+Each mod should remain in its own repository, but the automation around those repos should be consistent.
+
+This repository exists to provide that shared automation layer so mod repositories do not need to duplicate large workflow files or maintain slightly different copies of the same CI logic.
+
+Typical responsibilities for this repository include:
+
+- reusable build workflows invoked with `workflow_call`
+- shared composite actions for downloading pinned 7DTD dependencies
+- shared automation for checking whether a pinned 7DTD build is stale
+- standard packaging and artifact upload steps
+- release and publishing workflow building blocks
+
+## What Belongs Here
+
+Once scaffolded, this repository will typically contain a structure close to this:
+
+```text
+.
+├── config/
+│   └── managed-templates.yml
+├── .github/
+│   ├── actions/
+│   │   ├── setup-7dtd-deps/
+│   │   ├── check-7dtd-build/
+│   │   └── package-mod/
+│   └── workflows/
+│       ├── build-mod.yml
+│       ├── release-mod.yml
+│       ├── update-managed-template.yml
+│       └── update-7dtd-version.yml
+├── scripts/
+│   ├── render_template_update_matrix.py
+│   └── update_managed_repo.sh
+├── LICENSE
+└── README.md
+```
+
+The exact layout may evolve, but the core idea should stay the same: this repo owns reusable automation, not mod source code.
+
+## What Does Not Belong Here
+
+This repository should not become a monorepo for mods and should not hold the canonical source for individual mod projects.
+
+In particular, mod repositories should continue to own:
+
+- their source code
+- their solution and project files
+- their resource and packaging layout
+- their repo-local `.github/7dtd-version.env` pin
+- their top-level wrapper workflows that call into this repository
+
+The Copier template repository is responsible for defining the default repository shape. This infrastructure repository is responsible for the shared automation those generated repositories consume.
+
+## Consumption Model
+
+The intended usage pattern is:
+
+1. A mod repository is created from the `7dtd-mod-template` Copier template.
+2. That repo includes thin workflow wrappers.
+3. Those wrappers call reusable workflows from this repository by pinned ref.
+4. The mod repo supplies inputs such as solution path, artifact path, and packaging details.
+
+This keeps mod repositories independent while still centralizing CI behavior.
+
+## Managed Template Updates
+
+This repository now includes the first scaffold for managing Copier-based template rollouts across mod repositories.
+
+The source of truth is [config/managed-templates.yml](/home/luke/repos/7dtd-mod-infra/config/managed-templates.yml), which uses a template-first layout:
+
+```yaml
+templates:
+  - id: standard-mod
+    src: https://github.com/Gluck-House/7dtd-mod-template
+    version: 0.1.0
+    repos:
+      - repo: Gluck-House/7dtdTimeLoop
+        branch: main
+        enabled: true
+```
+
+The intended rollout flow is:
+
+1. Change `7dtd-mod-template`.
+2. Tag that repository with a SemVer tag such as `v0.1.0`.
+3. Update the managed template version in this repository if needed.
+4. Run `update-managed-template` manually from GitHub Actions.
+5. The workflow clones each selected managed repo, runs `uvx copier update`, pushes a branch, and opens or updates a PR if there is a diff.
+
+### Workflow Inputs
+
+The [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-template.yml) workflow accepts:
+
+- `template_id`: manifest template id, for example `standard-mod`
+- `repo`: `all` or one repo in `owner/name` form
+- `template_ref`: optional override tag, branch, or SHA
+
+If `template_ref` is left blank, the workflow resolves the manifest `version` to a git tag in the form `v<version>`.
+
+### Token Requirement
+
+Cross-repository PR creation requires a token that can push branches and open pull requests in the managed repositories.
+
+Create a secret named `MANAGED_REPOS_TOKEN` in this repository with access to the target mod repositories. A GitHub App installation token or fine-grained personal access token is the right shape for this.
+
+The workflow does not use the default `GITHUB_TOKEN` for cross-repo pushes because that token is normally scoped to the current repository only.
+
+## Template Versioning
+
+For the template repository itself, the lowest-friction versioning model is to use git tags as the source of truth.
+
+Recommended pattern:
+
+- use SemVer-style tags like `v0.1.0`, `v0.1.1`, `v0.2.0`
+- create a tag when the template is in a rollout-ready state
+- point managed repositories at tags, not template `main`
+
+This keeps updates reproducible and makes it possible to roll a set of repositories forward in a controlled way.
+
+At this stage, a separate `VERSION` file in the template repository is not necessary. The manifest in this repository can store the human-facing version number, and the workflow can derive the git ref as `v<version>`.
+
+## Design Principles
+
+- Keep mod repositories standalone.
+- Centralize automation logic here, not in each mod repo.
+- Keep version pinning decisions in the consuming mod repo.
+- Prefer reusable workflows and composite actions over copied workflow YAML.
+- Avoid committing game DLLs unless redistribution has been explicitly cleared.
+
+## Status
+
+This repository now contains the first managed-template update scaffold:
+
+- a template-first manifest in [managed-templates.yml](/home/luke/repos/7dtd-mod-infra/config/managed-templates.yml)
+- helper scripts for resolving update targets and applying Copier updates
+- a manual workflow for raising update PRs into managed repositories
+
+The next step is to create the `v0.1.0` tag in `7dtd-mod-template`, configure `MANAGED_REPOS_TOKEN`, and run the workflow against `Gluck-House/7dtdTimeLoop`.

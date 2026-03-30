@@ -1,0 +1,75 @@
+name: update-managed-template
+
+on:
+  workflow_dispatch:
+    inputs:
+      template_id:
+        description: Template id from config/managed-templates.yml
+        required: true
+        default: standard-mod
+      repo:
+        description: Target repo in owner/name form, or all
+        required: true
+        default: all
+      template_ref:
+        description: Optional override ref, tag, or SHA. Leave blank to use the manifest version.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      template_id: ${{ steps.plan.outputs.template_id }}
+      template_src: ${{ steps.plan.outputs.template_src }}
+      template_ref: ${{ steps.plan.outputs.template_ref }}
+      repo_count: ${{ steps.plan.outputs.repo_count }}
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build target matrix
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --with pyyaml python scripts/render_template_update_matrix.py \
+            config/managed-templates.yml \
+            "${{ inputs.template_id }}" \
+            "${{ inputs.repo }}" \
+            "${{ inputs.template_ref }}"
+
+  update:
+    needs: plan
+    if: needs.plan.outputs.repo_count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v6
+
+      - name: Apply Copier update and open PR
+        shell: bash
+        env:
+          MANAGED_REPOS_TOKEN: ${{ secrets.MANAGED_REPOS_TOKEN }}
+        run: |
+          set -euo pipefail
+          ./scripts/update_managed_repo.sh \
+            "${{ matrix.repo }}" \
+            "${{ matrix.branch }}" \
+            "${{ matrix.template_id }}" \
+            "${{ matrix.template_src }}" \
+            "${{ matrix.template_ref }}"
