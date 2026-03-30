@@ -72,12 +72,12 @@ jobs:
 
       - name: Publish dependency bundle for latest build
         env:
-          DEPS_S3_ACCESS_KEY_ID: ${{ secrets['7DTD_S3_ACCESS_KEY_ID'] }}
-          DEPS_S3_SECRET_ACCESS_KEY: ${{ secrets['7DTD_S3_SECRET_ACCESS_KEY'] }}
-          DEPS_S3_BUCKET: ${{ vars['7DTD_S3_BUCKET'] }}
-          DEPS_S3_ENDPOINT: ${{ vars['7DTD_S3_ENDPOINT'] }}
-          DEPS_S3_FORCE_PATH_STYLE: ${{ vars['7DTD_S3_FORCE_PATH_STYLE'] || 'true' }}
-          DEPS_S3_REGION: ${{ vars['7DTD_S3_REGION'] || 'eu-west-2' }}
+          DEPS_S3_ACCESS_KEY_ID: ${{ secrets['_7DTD_S3_ACCESS_KEY_ID'] }}
+          DEPS_S3_SECRET_ACCESS_KEY: ${{ secrets['_7DTD_S3_SECRET_ACCESS_KEY'] }}
+          DEPS_S3_BUCKET: ${{ vars['_7DTD_S3_BUCKET'] }}
+          DEPS_S3_ENDPOINT: ${{ vars['_7DTD_S3_ENDPOINT'] }}
+          DEPS_S3_FORCE_PATH_STYLE: ${{ vars['_7DTD_S3_FORCE_PATH_STYLE'] || 'true' }}
+          DEPS_S3_REGION: ${{ vars['_7DTD_S3_REGION'] || 'eu-west-2' }}
           APP_ID: ${{ steps.resolve.outputs.app_id }}
           LATEST_BUILD_ID: ${{ steps.resolve.outputs.latest_build_id }}
           STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim

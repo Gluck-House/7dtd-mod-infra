@@ -137,12 +137,12 @@ Because reusable workflows execute in the caller repository context, the consumi
 
 Provide these in the consuming repositories, or as organization-level secrets and variables:
 
-- secret: `7DTD_S3_ACCESS_KEY_ID`
-- secret: `7DTD_S3_SECRET_ACCESS_KEY`
-- variable: `7DTD_S3_BUCKET`
-- variable: `7DTD_S3_ENDPOINT`
-- variable: `7DTD_S3_FORCE_PATH_STYLE`
-- variable: `7DTD_S3_REGION`
+- secret: `_7DTD_S3_ACCESS_KEY_ID`
+- secret: `_7DTD_S3_SECRET_ACCESS_KEY`
+- variable: `_7DTD_S3_BUCKET`
+- variable: `_7DTD_S3_ENDPOINT`
+- variable: `_7DTD_S3_FORCE_PATH_STYLE`
+- variable: `_7DTD_S3_REGION`
 
 ## Template Versioning
 
