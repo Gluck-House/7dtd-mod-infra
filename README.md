@@ -92,18 +92,31 @@ The intended rollout flow is:
 1. Change `7dtd-mod-template`.
 2. Tag that repository with a SemVer tag such as `v0.1.0`.
 3. Update the managed template version in this repository if needed.
-4. Run `update-managed-template` manually from GitHub Actions.
+4. Push the manifest change to `main` in this repository, or wait for the daily scheduled run.
 5. The workflow clones each selected managed repo, runs `uvx copier update`, pushes a branch, and opens or updates a PR if there is a diff.
+6. Use a manual workflow run only when you want to target a specific repo or override the template ref.
+
+### Workflow Triggers
+
+The [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-template.yml) workflow runs:
+
+- automatically on pushes to `main`
+- automatically once per day on a schedule
+- manually via `workflow_dispatch`
+
+Automatic runs use `all` and `all`, so every enabled template and every enabled repo in the manifest is evaluated.
 
 ### Workflow Inputs
 
 The [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-template.yml) workflow accepts:
 
-- `template_id`: manifest template id, for example `standard-mod`
+- `template_id`: manifest template id such as `standard-mod`, or `all`
 - `repo`: `all` or one repo in `owner/name` form
 - `template_ref`: optional override tag, branch, or SHA
 
-If `template_ref` is left blank, the workflow resolves the manifest `version` to a git tag in the form `v<version>`.
+If `template_ref` is left blank, the workflow resolves each manifest `version` to a git tag in the form `v<version>`.
+
+`template_ref` should only be used when `template_id` targets a single template. It is intentionally not supported with `template_id=all`.
 
 ### Token Requirement
 
