@@ -15,6 +15,16 @@ on:
         required: false
         type: string
         default: ubuntu-latest
+    outputs:
+      release_created:
+        description: Whether a root release was created
+        value: ${{ jobs.release-please.outputs.release_created }}
+      tag_name:
+        description: Tag name created for the root release
+        value: ${{ jobs.release-please.outputs.tag_name }}
+      prs_created:
+        description: Whether a release PR was created or updated
+        value: ${{ jobs.release-please.outputs.prs_created }}
 
 permissions:
   contents: write
@@ -28,8 +38,13 @@ concurrency:
 jobs:
   release-please:
     runs-on: ${{ inputs.runner_label }}
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           config-file: ${{ inputs.config_file }}
           manifest-file: ${{ inputs.manifest_file }}

@@ -73,6 +73,7 @@ had_release_version_file=false
 
 git -C "$work_dir/repo" config user.name "github-actions[bot]"
 git -C "$work_dir/repo" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+git -C "$work_dir/repo" checkout -B "$update_branch" >/dev/null 2>&1
 
 uvx copier update --defaults --skip-answered --vcs-ref "$template_ref" "$work_dir/repo"
 
@@ -130,7 +131,6 @@ if git -C "$work_dir/repo" diff --quiet; then
     exit 0
 fi
 
-git -C "$work_dir/repo" checkout -B "$update_branch" >/dev/null 2>&1
 git -C "$work_dir/repo" add -A
 git -C "$work_dir/repo" commit -m "$commit_message" >/dev/null
 git -C "$work_dir/repo" push --force-with-lease origin "$update_branch" >/dev/null
