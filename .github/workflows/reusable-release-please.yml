@@ -1,0 +1,35 @@
+name: reusable-release-please
+
+on:
+  workflow_call:
+    inputs:
+      config_file:
+        required: false
+        type: string
+        default: .github/release-please-config.json
+      manifest_file:
+        required: false
+        type: string
+        default: .github/release-please-manifest.json
+      runner_label:
+        required: false
+        type: string
+        default: ubuntu-latest
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: reusable-release-please-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-please:
+    runs-on: ${{ inputs.runner_label }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: ${{ inputs.config_file }}
+          manifest-file: ${{ inputs.manifest_file }}
