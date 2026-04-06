@@ -1,7 +1,7 @@
 templates:
 - id: standard-mod
   src: https://github.com/Gluck-House/7dtd-mod-template
-  ref: v1.1.1
+  ref: v1.1.2
   repos:
   - repo: Gluck-House/7dtd-timeloop
     branch: main
