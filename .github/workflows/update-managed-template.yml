@@ -17,7 +17,7 @@ on:
         required: true
         default: all
       template_ref:
-        description: Optional override ref, tag, or SHA. Leave blank to use the manifest version.
+        description: Optional override ref, tag, or SHA. Leave blank to use the manifest ref.
         required: false
         default: ""
 

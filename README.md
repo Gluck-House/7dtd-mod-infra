@@ -81,7 +81,7 @@ The source of truth is [config/managed-templates.yml](/home/luke/repos/7dtd-mod-
 templates:
   - id: standard-mod
     src: https://github.com/Gluck-House/7dtd-mod-template
-    version: 0.1.0
+    ref: v1.0.0
     repos:
       - repo: Gluck-House/7dtd-timeloop
         branch: main
@@ -92,7 +92,7 @@ The intended rollout flow is:
 
 1. Change `7dtd-mod-template`.
 2. Tag that repository with a SemVer tag such as `v0.1.0`.
-3. Update the managed template version in this repository if needed.
+3. Update the managed template ref in this repository if needed.
 4. Push the manifest change to `main` in this repository, or wait for the daily scheduled run.
 5. The workflow clones each selected managed repo, runs `uvx copier update`, pushes a stable template branch, and opens or updates a PR if there is a diff.
 6. Use a manual workflow run only when you want to target a specific repo or override the template ref.
@@ -117,7 +117,7 @@ The [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workfl
 - `repo`: `all` or one repo in `owner/name` form
 - `template_ref`: optional override tag, branch, or SHA
 
-If `template_ref` is left blank, the workflow resolves each manifest `version` to a git tag in the form `v<version>`.
+If `template_ref` is left blank, the workflow uses each manifest `ref` directly.
 
 `template_ref` should only be used when `template_id` targets a single template. It is intentionally not supported with `template_id=all`.
 
@@ -156,7 +156,20 @@ Recommended pattern:
 
 This keeps updates reproducible and makes it possible to roll a set of repositories forward in a controlled way.
 
-At this stage, a separate `VERSION` file in the template repository is not necessary. The manifest in this repository can store the human-facing version number, and the workflow can derive the git ref as `v<version>`.
+At this stage, a separate `VERSION` file in the template repository is not necessary. The manifest in this repository should store the exact template ref to roll out, typically a release tag such as `v1.0.0`.
+
+## Template Promotion
+
+Template release promotion now uses an explicit cross-repo PR flow:
+
+1. `7dtd-mod-template` publishes a GitHub release.
+2. A template-repo workflow dispatches [promote-template-release.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/promote-template-release.yml) in this repository with the released tag.
+3. This repository opens or updates one promotion PR that changes `config/managed-templates.yml` to the new `ref`.
+4. After that PR merges, [update-managed-template.yml](/home/luke/repos/7dtd-mod-infra/.github/workflows/update-managed-template.yml) fans the template update out to the managed mod repositories.
+
+This keeps release and promotion as separate approvals while still removing the manual manifest edit.
+
+The dispatch originates from `7dtd-mod-template`, which therefore needs an `INFRA_REPO_TOKEN` secret with permission to invoke workflows in this repository.
 
 ## Design Principles
 

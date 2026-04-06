@@ -1,0 +1,44 @@
+name: promote-template-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      template_id:
+        description: Template id from config/managed-templates.yml
+        required: true
+        default: standard-mod
+      template_ref:
+        description: Exact template git ref to promote, typically a release tag like v1.2.3
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: promote-template-release-${{ github.event.inputs.template_id || 'unknown' }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.MANAGED_REPOS_TOKEN }}
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v7
+
+      - name: Update managed template manifest and open PR
+        shell: bash
+        env:
+          MANAGED_REPOS_TOKEN: ${{ secrets.MANAGED_REPOS_TOKEN }}
+        run: |
+          set -euo pipefail
+          ./scripts/update_managed_template_ref.sh \
+            "${{ github.repository }}" \
+            "main" \
+            "${{ github.event.inputs.template_id }}" \
+            "${{ github.event.inputs.template_ref }}"
