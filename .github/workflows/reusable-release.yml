@@ -25,12 +25,16 @@ on:
         required: false
         type: string
         default: actions-runner-scale-set
+      release_tag:
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
 
 concurrency:
-  group: reusable-release-${{ github.repository }}-${{ github.event.release.id || github.ref }}
+  group: reusable-release-${{ github.repository }}-${{ inputs.release_tag || github.event.release.id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -130,6 +134,23 @@ jobs:
         shell: bash
         run: ${{ inputs.build_script }}
 
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_name="${{ inputs.release_tag }}"
+          if [ -z "$tag_name" ]; then
+            tag_name="${{ github.event.release.tag_name }}"
+          fi
+
+          if [ -z "$tag_name" ]; then
+            echo "No release tag was provided and no release event tag is available." >&2
+            exit 1
+          fi
+
+          echo "RELEASE_TAG_NAME=$tag_name" >> "$GITHUB_ENV"
+
       - name: Stage release contents
         shell: bash
         run: |
@@ -145,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag_name="${{ github.event.release.tag_name }}"
+          tag_name="${RELEASE_TAG_NAME}"
           asset_name="${{ inputs.artifact_folder }}-${tag_name}.zip"
           asset_path="${{ github.workspace }}/${asset_name}"
           release_root="${{ inputs.project_name }}/build/release"
@@ -177,4 +198,5 @@ jobs:
       - name: Upload asset to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
           files: ${{ env.RELEASE_ASSET_PATH }}
