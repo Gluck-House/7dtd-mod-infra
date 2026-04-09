@@ -168,7 +168,7 @@ jobs:
 
           tag_name="${RELEASE_TAG_NAME}"
           asset_name="${{ inputs.artifact_folder }}-${tag_name}.zip"
-          asset_path="${{ github.workspace }}/${asset_name}"
+          asset_path="${ASSET_PATH}"
           release_root="${{ inputs.project_name }}/build/release"
 
           rm -f "$asset_path"
@@ -192,7 +192,7 @@ jobs:
           echo "RELEASE_ASSET_NAME=$asset_name" >> "$GITHUB_ENV"
         env:
           RELEASE_ROOT: ${{ github.workspace }}/${{ inputs.project_name }}/build/release
-          ASSET_PATH: ${{ github.workspace }}/${{ inputs.artifact_folder }}-${{ github.event.release.tag_name }}.zip
+          ASSET_PATH: ${{ github.workspace }}/${{ inputs.artifact_folder }}-${{ inputs.release_tag || github.event.release.tag_name }}.zip
           ARTIFACT_FOLDER: ${{ inputs.artifact_folder }}
 
       - name: Upload asset to release
