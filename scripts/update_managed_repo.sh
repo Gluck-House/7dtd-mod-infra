@@ -75,6 +75,25 @@ git -C "$work_dir/repo" config user.name "github-actions[bot]"
 git -C "$work_dir/repo" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git -C "$work_dir/repo" checkout -B "$update_branch" >/dev/null 2>&1
 
+# Managed repos may have been scaffolded from a local template checkout.
+# Normalize the stored Copier source to the remote template URL so updates work on CI runners.
+python - <<'PY' "$work_dir/repo/.copier-answers.yml" "$template_src"
+import re
+import sys
+from pathlib import Path
+
+answers_path = Path(sys.argv[1])
+template_src = sys.argv[2]
+text = answers_path.read_text(encoding="utf-8")
+
+if re.search(r"(?m)^_src_path:\s*", text):
+    text = re.sub(r"(?m)^_src_path:.*$", f"_src_path: {template_src}", text, count=1)
+else:
+    text += f"\n_src_path: {template_src}\n"
+
+answers_path.write_text(text, encoding="utf-8")
+PY
+
 uvx copier update --defaults --skip-answered --vcs-ref "$template_ref" "$work_dir/repo"
 
 if [ -n "$current_mod_version" ]; then
