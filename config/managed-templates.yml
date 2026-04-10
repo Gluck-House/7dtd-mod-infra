@@ -6,3 +6,6 @@ templates:
   - repo: Gluck-House/7dtd-timeloop
     branch: main
     enabled: true
+  - repo: Gluck-House/7dtd-poi-storage-rescue
+    branch: main
+    enabled: true
