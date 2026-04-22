@@ -44,7 +44,7 @@ jobs:
       prs_created: ${{ steps.release.outputs.prs_created }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           config-file: ${{ inputs.config_file }}
           manifest-file: ${{ inputs.manifest_file }}
