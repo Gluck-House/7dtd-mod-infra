@@ -28,7 +28,7 @@ jobs:
       repo_count: ${{ steps.plan.outputs.repo_count }}
     steps:
       - name: Checkout infra repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
@@ -53,7 +53,7 @@ jobs:
       STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
     steps:
       - name: Checkout infra repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
@@ -125,7 +125,7 @@ jobs:
       MANAGED_REPOS_TOKEN: ${{ secrets.MANAGED_REPOS_TOKEN }}
     steps:
       - name: Checkout infra repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
