@@ -6,7 +6,7 @@ on:
       runner_label:
         required: false
         type: string
-        default: ubuntu-latest
+        default: actions-runner-scale-set
 
 permissions:
   pull-requests: read
