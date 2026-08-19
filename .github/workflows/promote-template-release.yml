@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   promote:
-    runs-on: ubuntu-latest
+    runs-on: actions-runner-scale-set
     steps:
       - name: Checkout infra repository
         uses: actions/checkout@v6

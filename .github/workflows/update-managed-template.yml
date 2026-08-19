@@ -35,7 +35,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: actions-runner-scale-set
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       template_id: ${{ steps.plan.outputs.template_id }}
@@ -63,7 +63,7 @@ jobs:
   update:
     needs: plan
     if: needs.plan.outputs.repo_count != '0'
-    runs-on: ubuntu-latest
+    runs-on: actions-runner-scale-set
     strategy:
       fail-fast: false
       matrix:
