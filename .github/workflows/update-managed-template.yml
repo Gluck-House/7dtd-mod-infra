@@ -44,7 +44,7 @@ jobs:
       repo_count: ${{ steps.plan.outputs.repo_count }}
     steps:
       - name: Checkout infra repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
@@ -70,7 +70,7 @@ jobs:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - name: Checkout infra repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
