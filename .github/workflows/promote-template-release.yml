@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   promote:
-    runs-on: actions-runner-scale-set
+    runs-on: ci-light
     steps:
       - name: Checkout infra repository
         uses: actions/checkout@v6

@@ -24,7 +24,7 @@ on:
       runner_label:
         required: false
         type: string
-        default: actions-runner-scale-set
+        default: ci-light
       release_tag:
         required: false
         type: string

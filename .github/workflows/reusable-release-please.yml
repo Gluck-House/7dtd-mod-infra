@@ -14,7 +14,7 @@ on:
       runner_label:
         required: false
         type: string
-        default: actions-runner-scale-set
+        default: ci-light
     outputs:
       release_created:
         description: Whether a root release was created

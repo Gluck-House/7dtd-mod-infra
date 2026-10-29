@@ -22,7 +22,7 @@ env:
 
 jobs:
   plan:
-    runs-on: actions-runner-scale-set
+    runs-on: ci-light
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       repo_count: ${{ steps.plan.outputs.repo_count }}
@@ -44,13 +44,12 @@ jobs:
 
   resolve-latest:
     runs-on:
-      - actions-runner-scale-set
+      - ci-light
     outputs:
       app_id: ${{ steps.resolve.outputs.app_id }}
       latest_build_id: ${{ steps.resolve.outputs.latest_build_id }}
     env:
       APP_ID: "294420"
-      STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
     steps:
       - name: Checkout infra repository
         uses: actions/checkout@v6
@@ -58,13 +57,21 @@ jobs:
       - name: Set up UV
         uses: astral-sh/setup-uv@v7
 
+      # ci-light has no Docker daemon, so steamcmd runs locally and needs the
+      # 32-bit glibc loader.
+      - name: Install steamcmd runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y lib32gcc-s1
+
       - name: Resolve latest public 7DTD build
         id: resolve
         shell: bash
         run: |
           set -euo pipefail
-          STEAMCMD_MODE=docker \
-          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAMCMD_MODE=local \
           STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
           TOOLS_DIR="${{ github.workspace }}/.cache/tools" \
           ./scripts/resolve_latest_7dtd_build.sh
@@ -79,7 +86,6 @@ jobs:
           DEPS_S3_REGION: ${{ vars['_7DTD_S3_REGION'] || 'eu-west-2' }}
           APP_ID: ${{ steps.resolve.outputs.app_id }}
           LATEST_BUILD_ID: ${{ steps.resolve.outputs.latest_build_id }}
-          STEAMCMD_DOCKER_IMAGE: debian:bookworm-slim
         shell: bash
         run: |
           set -euo pipefail
@@ -94,8 +100,7 @@ jobs:
           APP_ID="${APP_ID}" \
           DEPS_DIR="${{ github.workspace }}/deps" \
           SERVER_DIR="${{ github.workspace }}/.cache/7dtd-dedicated-server" \
-          STEAMCMD_MODE=docker \
-          DOCKER_IMAGE="${STEAMCMD_DOCKER_IMAGE}" \
+          STEAMCMD_MODE=local \
           STEAM_STATE_DIR="${{ github.workspace }}/.cache/steamcmd" \
           TOOLS_DIR="${{ github.workspace }}/.cache/tools" \
           ./scripts/download_7dtd_server.sh
@@ -116,7 +121,7 @@ jobs:
       - resolve-latest
     if: needs.plan.outputs.repo_count != '0'
     runs-on:
-      - actions-runner-scale-set
+      - ci-light
     strategy:
       fail-fast: false
       matrix:

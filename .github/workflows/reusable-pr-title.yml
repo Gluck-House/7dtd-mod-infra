@@ -6,7 +6,7 @@ on:
       runner_label:
         required: false
         type: string
-        default: actions-runner-scale-set
+        default: ci-light
 
 permissions:
   pull-requests: read
